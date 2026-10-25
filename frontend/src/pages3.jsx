@@ -1,70 +1,39 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Plus, Save, Loader2, Trash2, Pencil, BookOpen, FileText, Video, Link2, StickyNote, ChevronLeft, ChevronRight,
-  Pin, PinOff, ArrowLeft, CheckCheck, ClipboardCheck, ExternalLink, Users, Library, GraduationCap } from 'lucide-react'
-import { api } from './api'
+  Pin, PinOff, ArrowLeft, CheckCheck, ClipboardCheck, ExternalLink, Users, Library, GraduationCap, Paperclip, HelpCircle } from 'lucide-react'
+import { api, download, getRole } from './api'
 import { btn, field, Modal, Skeleton, useUI } from './ui'
 import { Header, Card, Empty, Label, IconBtn, Badge } from './App'
+import { TONE, EVENT_TONE, fmt, fmtDateTime, todayStr, ClassSelect, Actions, Tabs, useSave } from './shared'
+import { QuizzesTab } from './pages4'
+import { StudentCourse } from './pages5'
 
-const TONE = {
-  blue: 'from-blue-700 to-sky-400', emerald: 'from-emerald-700 to-teal-400', amber: 'from-amber-600 to-yellow-400',
-  rose: 'from-rose-700 to-pink-400', violet: 'from-violet-700 to-purple-400', sky: 'from-sky-700 to-cyan-400',
-}
 const SWATCH = { blue: 'bg-blue-600', emerald: 'bg-emerald-600', amber: 'bg-amber-500', rose: 'bg-rose-600', violet: 'bg-violet-600', sky: 'bg-sky-500' }
-export const EVENT_TONE = {
-  Exam: 'bg-red-100 text-red-700', Holiday: 'bg-emerald-100 text-emerald-700', Meeting: 'bg-amber-100 text-amber-700',
-  Event: 'bg-blue-100 text-brand', Assignment: 'bg-violet-100 text-violet-700',
-}
 const KINDS = { Lesson: BookOpen, File: FileText, Video, Link: Link2, Note: StickyNote }
 const SUB = ['Missing', 'Submitted', 'Late']
 const SUB_TONE = { Missing: 'text-red-500', Submitted: 'text-emerald-600', Late: 'text-amber-600' }
 const ATT = { Present: 'bg-emerald-500', Absent: 'bg-red-500', Late: 'bg-amber-500', Excused: 'bg-sky-500' }
-const fmt = (d) => d.split('-').reverse().join('/')
-const todayStr = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
-const ClassSelect = ({ classes, value, onChange, all }) => (
-  <select className={field} value={value} onChange={onChange}>
-    {all && <option value="">{all}</option>}
-    {classes.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.academic_year})</option>)}
-  </select>
-)
-const Actions = ({ onClose, busy, label = 'Save' }) => (
-  <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-    <button type="button" onClick={onClose} className={btn + ' !text-slate-600 bg-slate-100 shadow-none'}>Cancel</button>
-    <button disabled={busy} className={btn + ' bg-brand'}>{busy ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}{label}</button>
-  </div>
-)
-const Tabs = ({ list, value, onChange }) => (
-  <div className="mb-5 flex gap-6 overflow-x-auto border-b border-slate-200">
-    {list.map(([k, label]) => (
-      <button key={k} onClick={() => onChange(k)} className={`-mb-px whitespace-nowrap border-b-2 pb-3 text-sm font-semibold transition ${value === k ? 'border-brand text-brand' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>{label}</button>))}
-  </div>
-)
-
-// generic "submit a JSON form" helper
-function useSave(ui, done) {
-  const [busy, setBusy] = useState(false)
-  return [busy, async (path, method, body, okMsg) => {
-    setBusy(true)
-    try { await api(path, { method, body: JSON.stringify(body) }); ui.success(okMsg); done() } catch (x) { ui.error('Could not save', x.message); setBusy(false) }
-  }]
-}
 
 /* ------------------------------------------------------------------ COURSES */
 function CourseForm({ course, classes, onSaved, onClose }) {
   const ui = useUI()
-  const [f, setF] = useState(course ? { title: course.title, code: course.code, class_id: course.class_id, teacher: course.teacher, description: course.description, color: course.color }
-    : { title: '', code: '', class_id: classes[0]?.id || '', teacher: '', description: '', color: 'blue' })
+  const [teachers, setTeachers] = useState([])
+  const [f, setF] = useState(course ? { title: course.title, code: course.code, class_id: course.class_id, teacher_id: course.teacher_id || '', description: course.description, color: course.color }
+    : { title: '', code: '', class_id: classes[0]?.id || '', teacher_id: '', description: '', color: 'blue' })
   const [busy, save] = useSave(ui, onSaved)
+  useEffect(() => { api('/users?role=teacher').then(setTeachers).catch(() => {}) }, [])
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   return (
-    <form onSubmit={(e) => { e.preventDefault(); save(course ? `/courses/${course.id}` : '/courses', course ? 'PUT' : 'POST', { ...f, class_id: Number(f.class_id) }, course ? 'Course updated' : 'Course created') }} className="space-y-4">
+    <form onSubmit={(e) => { e.preventDefault(); save(course ? `/courses/${course.id}` : '/courses', course ? 'PUT' : 'POST', { ...f, class_id: Number(f.class_id), teacher_id: f.teacher_id ? Number(f.teacher_id) : null }, course ? 'Course updated' : 'Course created') }} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-[1fr_150px]">
         <Label t="Title"><input className={field} placeholder="e.g. Mathematics - 6e A" value={f.title} onChange={set('title')} required /></Label>
         <Label t="Code"><input className={field} placeholder="MAT-6A" value={f.code} onChange={set('code')} required /></Label>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Label t="Class"><ClassSelect classes={classes} value={f.class_id} onChange={set('class_id')} /></Label>
-        <label className="block"><span className="mb-1.5 block text-sm font-medium text-slate-600">Teacher</span><input className={field} placeholder="e.g. Prof. Kalala" value={f.teacher} onChange={set('teacher')} /></label>
+        <label className="block"><span className="mb-1.5 block text-sm font-medium text-slate-600">Teacher</span>
+          <select className={field} value={f.teacher_id} onChange={set('teacher_id')}><option value="">No teacher assigned</option>{teachers.map((t) => <option key={t.id} value={t.id}>{t.full_name}</option>)}</select></label>
       </div>
       <label className="block"><span className="mb-1.5 block text-sm font-medium text-slate-600">Description</span><textarea rows={3} className={field} value={f.description} onChange={set('description')} /></label>
       <div className="flex items-center gap-2.5"><span className="text-sm font-medium text-slate-600">Colour</span>
@@ -80,18 +49,20 @@ export function Courses() {
   const [classes, setClasses] = useState([])
   const [cls, setCls] = useState('')
   const [modal, setModal] = useState(false)
+  const role = getRole()
   const load = () => api('/courses' + (cls ? `?class_id=${cls}` : '')).then(setRows).catch((e) => ui.error('Loading failed', e.message))
-  useEffect(() => { api('/classes').then(setClasses) }, [])
+  useEffect(() => { if (role !== 'student') api('/classes').then(setClasses) }, [])
   useEffect(() => { setRows(null); load() }, [cls])
   return (
     <>
-      <Header title="Courses" sub="Course pages with lessons, resources and assignments for every class." />
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row">
-        <button onClick={() => setModal(true)} className={btn + ' bg-brand'}><Plus size={18} />New course</button>
-        <div className="sm:ml-auto sm:w-64"><ClassSelect classes={classes} value={cls} onChange={(e) => setCls(e.target.value)} all="All classes" /></div>
-      </div>
+      <Header title={role === 'student' ? 'My courses' : 'Courses'} sub={role === 'admin' ? 'Create courses, assign teachers and follow every class.' : role === 'teacher' ? 'The courses you teach: content, assignments and quizzes.' : 'Open a course to see lessons, assignments and quizzes.'} />
+      {role !== 'student' && (
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+          {role === 'admin' && <button onClick={() => setModal(true)} className={btn + ' bg-brand'}><Plus size={18} />New course</button>}
+          <div className="sm:ml-auto sm:w-64"><ClassSelect classes={classes} value={cls} onChange={(e) => setCls(e.target.value)} all="All classes" /></div>
+        </div>)}
       {!rows ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-48 !rounded-2xl" />)}</div>
-        : !rows.length ? <Card><Empty text="No courses yet. Create your first course." /></Card> : (
+        : !rows.length ? <Card><Empty text={role === 'admin' ? 'No courses yet. Create your first course.' : 'No courses available yet.'} /></Card> : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {rows.map((c) => (
               <button key={c.id} onClick={() => nav(`/courses/${c.id}`)} className="pop group overflow-hidden rounded-2xl bg-white text-left shadow-card ring-1 ring-slate-200/70 transition hover:-translate-y-1 hover:shadow-xl hover:shadow-slate-900/10">
@@ -174,6 +145,15 @@ function Marking({ a, onClose, onSaved }) {
             <input type="number" min="0" max={a.max_score} step="0.25" placeholder="Score" value={r.score ?? ''} className={`${field} !w-24 text-center font-bold`}
               onChange={(e) => upd(r.student_id, { score: e.target.value, status: r.status === 'Missing' && e.target.value !== '' ? 'Submitted' : r.status })} />
             <input className={field + ' min-w-0 flex-1 basis-40'} placeholder="Feedback (optional)" value={r.feedback || ''} onChange={(e) => upd(r.student_id, { feedback: e.target.value })} />
+            {(r.content || r.link || r.file_name) && (
+              <div className="basis-full rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Student work · {fmtDateTime(r.submitted_at)}</div>
+                {r.content && <p className="whitespace-pre-line">{r.content}</p>}
+                <div className="mt-1.5 flex flex-wrap gap-3">
+                  {r.link && <a href={r.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 break-all font-semibold text-brand hover:underline"><ExternalLink size={14} />{r.link}</a>}
+                  {r.file_name && <button onClick={() => download(`/submissions/${r.submission_id}/file`, r.file_name).catch((x) => ui.error('Download failed', x.message))} className="inline-flex items-center gap-1 font-semibold text-brand hover:underline"><Paperclip size={14} />{r.file_name}</button>}
+                </div>
+              </div>)}
           </div>))}
       </div>
       <div className="mt-5 flex justify-end"><button onClick={save} disabled={!rows || busy} className={btn + ' w-full bg-brand sm:w-auto'}>{busy ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}Save marks</button></div>
@@ -182,12 +162,17 @@ function Marking({ a, onClose, onSaved }) {
 }
 
 export function CourseDetail() {
+  return getRole() === 'student' ? <StudentCourse /> : <StaffCourse />
+}
+
+function StaffCourse() {
   const { id } = useParams()
   const ui = useUI(), nav = useNavigate()
   const [c, setC] = useState(null)
   const [classes, setClasses] = useState([])
   const [tab, setTab] = useState('content')
   const [modal, setModal] = useState(null)
+  const admin = getRole() === 'admin'
   const load = () => api(`/courses/${id}`).then(setC).catch((e) => { ui.error('Course not found', e.message); nav('/courses') })
   useEffect(() => { load(); api('/classes').then(setClasses) }, [id])
   const close = () => setModal(null)
@@ -206,11 +191,11 @@ export function CourseDetail() {
           <h1 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-3xl">{c.title}</h1>
           <p className="mt-2 max-w-2xl text-sm opacity-90">{c.description || 'No description.'}</p>
           <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold"><GraduationCap size={16} />{c.teacher || 'No teacher assigned'}</p></div>
-        <div className="flex gap-2">
+        {admin && <div className="flex gap-2">
           <IconBtn c="bg-white/20" Icon={Pencil} label="Edit course" onClick={() => setModal({ t: 'edit' })} />
-          <IconBtn c="bg-red-500" Icon={Trash2} label="Delete course" onClick={() => remove(`/courses/${c.id}`, `Delete ${c.title}?`, 'Its content, assignments and marks will be permanently removed.')} /></div>
+          <IconBtn c="bg-red-500" Icon={Trash2} label="Delete course" onClick={() => remove(`/courses/${c.id}`, `Delete ${c.title}?`, 'Its content, assignments and marks will be permanently removed.')} /></div>}
       </div>
-      <Tabs value={tab} onChange={setTab} list={[['content', `Content (${c.content.length})`], ['assign', `Assignments (${c.assignment_list.length})`], ['people', `Participants (${c.participants.length})`]]} />
+      <Tabs value={tab} onChange={setTab} list={[['content', `Content (${c.content.length})`], ['assign', `Assignments (${c.assignment_list.length})`], ['quiz', 'Quizzes'], ['people', `Participants (${c.participants.length})`]]} />
 
       {tab === 'content' && (
         <Card>
@@ -247,6 +232,8 @@ export function CourseDetail() {
                   <span>{a.submitted}/{a.total} submitted · {a.graded} graded</span></div>
               </div>))}</div>)}
         </Card>)}
+
+      {tab === 'quiz' && <QuizzesTab course={c} />}
 
       {tab === 'people' && (
         <Card>
@@ -336,14 +323,16 @@ export function Attendance() {
 /* ------------------------------------------------------------------ ANNOUNCEMENTS */
 function AnnouncementForm({ classes, onSaved, onClose }) {
   const ui = useUI()
-  const [f, setF] = useState({ title: '', body: '', class_id: '', pinned: false })
+  const teacher = getRole() === 'teacher'
+  const [f, setF] = useState({ title: '', body: '', class_id: teacher ? classes[0]?.id || '' : '', pinned: false })
   const [busy, save] = useSave(ui, onSaved)
   return (
     <form onSubmit={(e) => { e.preventDefault(); save('/announcements', 'POST', { ...f, class_id: f.class_id ? Number(f.class_id) : null }, 'Announcement published') }} className="space-y-4">
       <Label t="Title"><input className={field} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} required autoFocus /></Label>
       <Label t="Message"><textarea rows={5} className={field} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} required /></Label>
-      <label className="block"><span className="mb-1.5 block text-sm font-medium text-slate-600">Audience</span><ClassSelect classes={classes} value={f.class_id} onChange={(e) => setF({ ...f, class_id: e.target.value })} all="All classes" /></label>
-      <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={f.pinned} onChange={(e) => setF({ ...f, pinned: e.target.checked })} />Pin to the top</label>
+      <label className="block"><span className="mb-1.5 block text-sm font-medium text-slate-600">Audience</span>
+        <ClassSelect classes={classes} value={f.class_id} onChange={(e) => setF({ ...f, class_id: e.target.value })} all={teacher ? undefined : 'All classes'} /></label>
+      {!teacher && <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={f.pinned} onChange={(e) => setF({ ...f, pinned: e.target.checked })} />Pin to the top</label>}
       <Actions onClose={onClose} busy={busy} label="Publish" />
     </form>
   )
@@ -351,11 +340,12 @@ function AnnouncementForm({ classes, onSaved, onClose }) {
 
 export function Announcements() {
   const ui = useUI()
+  const role = getRole()
   const [rows, setRows] = useState(null)
   const [classes, setClasses] = useState([])
   const [modal, setModal] = useState(false)
   const load = () => api('/announcements').then(setRows).catch((e) => ui.error('Loading failed', e.message))
-  useEffect(() => { load(); api('/classes').then(setClasses) }, [])
+  useEffect(() => { load(); if (role !== 'student') api('/classes').then(setClasses) }, [])
   const pin = (a) => api(`/announcements/${a.id}/pin`, { method: 'PUT' }).then(load).catch((x) => ui.error('Failed', x.message))
   const del = async (a) => {
     if (!(await ui.confirm({ title: 'Delete this announcement?', message: a.title, confirmText: 'Delete' }))) return
@@ -363,8 +353,8 @@ export function Announcements() {
   }
   return (
     <>
-      <Header title="Announcements" sub="Publish news for the whole school or for a single class." />
-      <button onClick={() => setModal(true)} className={btn + ' mb-5 bg-brand'}><Plus size={18} />New announcement</button>
+      <Header title="Announcements" sub={role === 'student' ? 'News from your school and your teachers.' : 'Publish news for the whole school or for one of your classes.'} />
+      {role !== 'student' && <button onClick={() => setModal(true)} className={btn + ' mb-5 bg-brand'}><Plus size={18} />New announcement</button>}
       {!rows ? <div className="space-y-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-28 !rounded-2xl" />)}</div>
         : !rows.length ? <Card><Empty text="No announcements yet." /></Card> : (
           <div className="space-y-4">{rows.map((a) => (
@@ -373,10 +363,11 @@ export function Announcements() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">{a.pinned && <Pin size={15} className="text-amber-500" />}<h3 className="text-lg font-bold text-navy-800">{a.title}</h3>
                     <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-brand">{a.class_name}</span></div>
-                  <div className="mt-0.5 text-xs text-slate-400">{new Date(a.created_at).toLocaleDateString()}</div>
+                  <div className="mt-0.5 text-xs text-slate-400">{a.author} · {new Date(a.created_at).toLocaleDateString()}</div>
                   <p className="mt-3 whitespace-pre-line text-sm text-slate-600">{a.body}</p></div>
-                <div className="flex gap-2"><IconBtn c="bg-amber-400" Icon={a.pinned ? PinOff : Pin} label={a.pinned ? 'Unpin' : 'Pin'} onClick={() => pin(a)} />
-                  <IconBtn c="bg-red-500" Icon={Trash2} label="Delete" onClick={() => del(a)} /></div>
+                <div className="flex gap-2">
+                  {role === 'admin' && <IconBtn c="bg-amber-400" Icon={a.pinned ? PinOff : Pin} label={a.pinned ? 'Unpin' : 'Pin'} onClick={() => pin(a)} />}
+                  {a.can_delete && <IconBtn c="bg-red-500" Icon={Trash2} label="Delete" onClick={() => del(a)} />}</div>
               </div>
             </Card>))}</div>)}
       {modal && <Modal title="New announcement" onClose={() => setModal(false)}><AnnouncementForm classes={classes} onClose={() => setModal(false)} onSaved={() => { setModal(false); load() }} /></Modal>}
@@ -405,13 +396,14 @@ function EventForm({ day, classes, onSaved, onClose }) {
 
 export function CalendarPage() {
   const ui = useUI()
+  const admin = getRole() === 'admin'
   const [ym, setYm] = useState(todayStr().slice(0, 7))
   const [ev, setEv] = useState(null)
   const [classes, setClasses] = useState([])
   const [modal, setModal] = useState(null)
   const [y, m] = ym.split('-').map(Number)
   const load = () => api(`/calendar?month=${ym}`).then(setEv).catch((e) => ui.error('Loading failed', e.message))
-  useEffect(() => { api('/classes').then(setClasses) }, [])
+  useEffect(() => { if (admin) api('/classes').then(setClasses) }, [])
   useEffect(() => { setEv(null); load() }, [ym])
   const shift = (k) => { const d = new Date(y, m - 1 + k, 1); setYm(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`) }
   const pad = (new Date(y, m - 1, 1).getDay() + 6) % 7
@@ -425,13 +417,13 @@ export function CalendarPage() {
   }
   return (
     <>
-      <Header title="Calendar" sub="Exams, holidays, meetings and assignment deadlines." />
+      <Header title="Calendar" sub="Exams, holidays, meetings, assignment deadlines and quiz closing dates." />
       <Card>
         <div className="mb-4 flex items-center gap-2">
           <button onClick={() => shift(-1)} aria-label="Previous month" className="grid h-9 w-9 place-items-center rounded-xl ring-1 ring-slate-200 hover:bg-slate-50"><ChevronLeft size={16} /></button>
           <h2 className="min-w-40 text-center text-lg font-bold text-navy-800">{new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h2>
           <button onClick={() => shift(1)} aria-label="Next month" className="grid h-9 w-9 place-items-center rounded-xl ring-1 ring-slate-200 hover:bg-slate-50"><ChevronRight size={16} /></button>
-          <button onClick={() => setModal({ day: today })} className={btn + ' ml-auto bg-brand'}><Plus size={18} />Add event</button>
+          {admin && <button onClick={() => setModal({ day: today })} className={btn + ' ml-auto bg-brand'}><Plus size={18} />Add event</button>}
         </div>
         <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-400">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div key={d} className="py-1.5">{d}</div>)}</div>
         <div className="grid grid-cols-7 gap-1">
@@ -439,7 +431,7 @@ export function CalendarPage() {
             if (!n) return <div key={i} />
             const list = (ev || []).filter((e) => e.day === key(n))
             return (
-              <button key={i} onClick={() => setModal({ day: key(n) })} className={`min-h-16 rounded-xl p-1.5 text-left ring-1 transition hover:bg-blue-50/40 sm:min-h-24 ${key(n) === today ? 'ring-2 ring-brand' : 'ring-slate-100'}`}>
+              <button key={i} onClick={() => admin && setModal({ day: key(n) })} className={`${admin ? '' : 'cursor-default '}min-h-16 rounded-xl p-1.5 text-left ring-1 transition hover:bg-blue-50/40 sm:min-h-24 ${key(n) === today ? 'ring-2 ring-brand' : 'ring-slate-100'}`}>
                 <div className={`text-xs font-bold ${key(n) === today ? 'text-brand' : 'text-slate-500'}`}>{n}</div>
                 <div className="mt-1 hidden space-y-0.5 sm:block">{list.slice(0, 2).map((e, j) => <div key={j} className={`truncate rounded px-1.5 py-0.5 text-[10px] font-semibold ${EVENT_TONE[e.kind]}`}>{e.title}</div>)}{list.length > 2 && <div className="text-[10px] text-slate-400">+{list.length - 2} more</div>}</div>
                 <div className="mt-1 flex gap-0.5 sm:hidden">{list.slice(0, 3).map((e, j) => <i key={j} className={`h-1.5 w-1.5 rounded-full ${EVENT_TONE[e.kind].split(' ')[0]}`} />)}</div>

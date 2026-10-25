@@ -60,3 +60,4 @@ body { @apply bg-slate-50 font-sans text-slate-700 antialiased; background-image
 .dark .ring-slate-200\/70 { --tw-ring-color: #223056; }
 .dark .bg-slate-50\/80 { background-color: rgba(14,22,41,.8); }
 .dark * { scrollbar-color: #2a3c6b transparent; }
+.dark .bg-sky-100 { background-color: rgba(14,165,233,.22); }

@@ -6,10 +6,10 @@ from io import BytesIO
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Float, ForeignKey, String, UniqueConstraint, func, or_, select
+from sqlalchemy import Float, ForeignKey, String, UniqueConstraint, func, select
 from sqlalchemy.orm import Mapped, Session, joinedload, mapped_column
 
-from main import Base, Student, get_db, guard
+from main import ANY, STAFF, Base, Student, User, check_students, get_db, need_class, student_filters
 
 SUBJECTS = ["Mathematics", "French", "English", "Science", "History", "Geography"]
 TERMS = ["Term 1", "Term 2", "Term 3"]
@@ -35,7 +35,7 @@ def seed_extras(db: Session):
     db.commit()
 
 
-router = APIRouter(prefix="/api", dependencies=[Depends(guard)])
+router = APIRouter(prefix="/api")
 
 
 class ScoreIn(BaseModel):
@@ -50,12 +50,13 @@ class GradesIn(BaseModel):
 
 
 @router.get("/meta")
-def meta():
+def meta(user: User = ANY):
     return dict(subjects=SUBJECTS, terms=TERMS)
 
 
 @router.get("/grades")
-def get_grades(class_id: int, subject: str, term: str, db: Session = Depends(get_db)):
+def get_grades(class_id: int, subject: str, term: str, user: User = STAFF, db: Session = Depends(get_db)):
+    need_class(db, user, class_id)
     studs = db.scalars(select(Student).where(Student.class_id == class_id).order_by(Student.full_name)).all()
     sc = {g.student_id: g.score for g in db.scalars(select(Grade).where(
         Grade.subject == subject, Grade.term == term, Grade.student_id.in_([s.id for s in studs] or [0])))}
@@ -63,9 +64,10 @@ def get_grades(class_id: int, subject: str, term: str, db: Session = Depends(get
 
 
 @router.put("/grades")
-def save_grades(d: GradesIn, db: Session = Depends(get_db)):
+def save_grades(d: GradesIn, user: User = STAFF, db: Session = Depends(get_db)):
     if d.subject not in SUBJECTS or d.term not in TERMS:
         raise HTTPException(400, "Unknown subject or term")
+    check_students(db, user, [s.student_id for s in d.scores])
     ex = {g.student_id: g for g in db.scalars(select(Grade).where(Grade.subject == d.subject, Grade.term == d.term))}
     for s in d.scores:
         g = ex.get(s.student_id)
@@ -125,17 +127,17 @@ def report_pdf(db: Session, s: Student) -> BytesIO:
 
 
 @router.get("/report-card/{sid}.pdf")
-def card(sid: int, db: Session = Depends(get_db)):
+def card(sid: int, user: User = STAFF, db: Session = Depends(get_db)):
     s = db.get(Student, sid)
     if not s:
         raise HTTPException(404, "Student not found")
+    need_class(db, user, s.class_id)
     return pdf_response(report_pdf(db, s), f"report-card-{s.student_number}.pdf")
 
 
-def filtered(db: Session, q: str):
-    q = q.strip()
-    filt = [or_(Student.full_name.ilike(f"%{q}%"), Student.student_number.ilike(f"%{q}%"))] if q else []
-    return db.scalars(select(Student).options(joinedload(Student.school_class)).where(*filt).order_by(Student.student_number)).all()
+def filtered(db: Session, user: User, q: str):
+    return db.scalars(select(Student).options(joinedload(Student.school_class)).where(*student_filters(db, user, q))
+                      .order_by(Student.student_number)).all()
 
 
 HEAD = ["#", "Student Number", "Full Name", "Class", "Academic Year", "Date of Birth", "Guardian", "Status"]
@@ -143,14 +145,14 @@ line = lambda i, s: [i, s.student_number, s.full_name, s.school_class.name, s.sc
 
 
 @router.get("/export/students.xlsx")
-def export_xlsx(q: str = "", db: Session = Depends(get_db)):
+def export_xlsx(q: str = "", user: User = STAFF, db: Session = Depends(get_db)):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     wb = Workbook()
     ws = wb.active
     ws.title = "Students"
     ws.append(HEAD)
-    for i, s in enumerate(filtered(db, q), 1):
+    for i, s in enumerate(filtered(db, user, q), 1):
         ws.append(line(i, s))
     for c in ws[1]:
         c.font, c.fill, c.alignment = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="0A2556"), Alignment(horizontal="center")
@@ -165,13 +167,13 @@ def export_xlsx(q: str = "", db: Session = Depends(get_db)):
 
 
 @router.get("/export/students.pdf")
-def export_pdf(q: str = "", db: Session = Depends(get_db)):
+def export_pdf(q: str = "", user: User = STAFF, db: Session = Depends(get_db)):
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     st, buf = getSampleStyleSheet(), BytesIO()
-    t = Table([HEAD] + [line(i, s) for i, s in enumerate(filtered(db, q), 1)], repeatRows=1)
+    t = Table([HEAD] + [line(i, s) for i, s in enumerate(filtered(db, user, q), 1)], repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0a2556")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 8.5),

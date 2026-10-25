@@ -1,36 +1,39 @@
-# Hodari School – Gestion scolaire + plateforme d'apprentissage (type Moodle)
+# Hodari School - Gestion scolaire + plateforme d'apprentissage
 
-Stack : **FastAPI** · **PostgreSQL** · **React (Vite)** · **Tailwind CSS** · Docker.
+Stack : **FastAPI** - **PostgreSQL** - **React (Vite)** - **Tailwind CSS** - Docker.
 
 ## Lancer
 ```bash
-sudo docker compose up --build
+docker compose up --build
 ```
-Ouvrir **http://localhost:8080** (API : `/api/docs`). Repartir de zéro : `sudo docker compose down -v`.
+Ouvrir **http://localhost:8080** (API : `/api/docs`). Repartir de zéro : `docker compose down -v`.
+Une base existante est migrée automatiquement (nouvelles colonnes, comptes élèves et professeurs créés au démarrage).
 
-## Connexion (un seul compte : administrateur)
-| Identifiant | Mot de passe |
-|---|---|
-| `admin` | `admin123` |
+## Connexion (un seul formulaire, le rôle vient du compte)
+| Rôle | Identifiant | Mot de passe initial |
+|---|---|---|
+| Administrateur | `admin` | `admin123` (changement obligatoire à la première connexion) |
+| Professeur (démo) | `t.kalala`, `t.nsimba`, `t.mukendi`, `t.ilunga` | `teacher123` (changement obligatoire) |
+| Élève | son **numéro d'élève** (ex. `ST001`) | `12345` (changement obligatoire) |
 
-Il n'y a plus de comptes Teacher / Student : l'administrateur gère tout. Les anciens comptes `teacher` et `student`
-sont supprimés automatiquement au démarrage. Le mot de passe se change dans le menu (icône clé).
+Les comptes élèves sont créés automatiquement avec l'élève. Les professeurs se créent dans **Users** (mot de passe
+temporaire aléatoire affiché une seule fois). Un mot de passe oublié se réinitialise dans **Users** ou dans la liste des élèves.
 
-## Fonctionnalités
-**Gestion scolaire**
-- Tableau de bord · élèves (CRUD, recherche, pagination) · classes
-- Notes par classe / matière / trimestre · bulletin PDF · export Excel et PDF
+## Sécurité
+- Permissions vérifiées **côté serveur** (un professeur ne voit que ses cours et ses classes, un élève que ses données).
+- Changement de mot de passe **obligatoire** au premier accès ; `12345` est refusé comme nouveau mot de passe.
+- Verrouillage de 10 minutes après 5 échecs de connexion.
+- Fichiers remis : 10 Mo maximum, types limités (PDF, Office, images, texte, ZIP), stockés dans le volume `uploads`.
 
-**Plateforme d'apprentissage (type Moodle)**
-- **Cours** : une page par cours (classe, enseignant, couleur) avec **contenus** (leçon, fichier, vidéo, lien, note),
-  **devoirs** (date limite, note max) et **participants**
-- **Devoirs** : suivi des remises (manquant / remis / en retard), **notation et commentaires** élève par élève
-- **Présences** : registre quotidien par classe (présent / absent / retard / excusé) et **statistiques** par élève
-- **Annonces** : pour toute l'école ou une classe, épinglage
-- **Calendrier** : examens, congés, réunions + dates limites des devoirs ajoutées automatiquement
-- Tableau de bord enrichi : cours, devoirs ouverts, copies à noter, taux de présence, annonces, prochains événements
-- Interface sans emojis (icônes Lucide), polices auto-hébergées (Inter + Plus Jakarta Sans), mode sombre, responsive, notifications et confirmations
+## Ce que chaque rôle peut faire
+**Administrateur** : élèves, classes, utilisateurs (professeurs, admins, réinitialisation), cours et affectation des professeurs,
+annonces, calendrier, notes, présences, exports Excel/PDF, bulletins.
+
+**Professeur** : ses cours (contenus, devoirs, **quiz**), correction des remises (texte, lien, fichier) avec notes et
+commentaires, résultats et statistiques des quiz, présences et notes de ses classes, annonces pour ses classes.
+
+**Élève** : tableau de bord, cours, **remise des devoirs** (texte, lien, fichier), **quiz** corrigés automatiquement avec
+correction détaillée, notes et bulletin PDF, présences, annonces, calendrier.
 
 ## Production
-Changer `SECRET_KEY`, le mot de passe `admin` (menu) et celui de PostgreSQL ; retirer le pré-remplissage des
-identifiants dans `frontend/src/App.jsx` (constante `DEMO`).
+Changer `SECRET_KEY` et le mot de passe PostgreSQL dans `docker-compose.yml`. Sauvegarder les volumes `pgdata` et `uploads`.
